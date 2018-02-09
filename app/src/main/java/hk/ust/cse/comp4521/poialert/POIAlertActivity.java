@@ -2,8 +2,12 @@ package hk.ust.cse.comp4521.poialert;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Parcelable;
+import android.os.ResultReceiver;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
@@ -97,6 +101,29 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
 
     private LocationCallback mLocationCallback;
 
+    protected static final String ADDRESS_REQUESTED_KEY = "address-request-pending";
+    protected static final String LOCATION_ADDRESS_KEY = "location-address";
+
+    /**
+     * Tracks whether the user has requested an address. Becomes true when the user requests an
+     * address and false when the address (or an error message) is delivered.
+     * The user requests an address by pressing the Fetch Address button. This may happen
+     * before GoogleApiClient connects. This activity uses this boolean to keep track of the
+     * user's intent. If the value is true, the activity tries to fetch the address as soon as
+     * GoogleApiClient connects.
+     */
+    protected boolean mAddressRequested;
+
+    /**
+     * The formatted location address.
+     */
+    protected String mPOIOutput, mLocationOutput, mAddressOutput;
+
+    /**
+     * Receiver registered with this activity to get the response from FetchAddressIntentService.
+     */
+    private AddressResultReceiver mResultReceiver;
+
     TextView poiView;
 
     @Override
@@ -164,13 +191,29 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
                                     "  Longitude = " + String.valueOf(mLastLocation.getLongitude());
                             Log.i(TAG, message);
                             Snackbar.make(poiView, message, Snackbar.LENGTH_LONG).show();
+
+                            // Determine whether a Geocoder is available.
+                            if (!Geocoder.isPresent()) {
+                                Snackbar.make(poiView, getString(R.string.no_geocoder_available), Snackbar.LENGTH_LONG).show();
+                                return;
+                            }
+                            mAddressRequested = true;
+
+                            // It is possible that the user presses the button to get the address before the
+                            // GoogleApiClient object successfully connects. In such a case, mAddressRequested
+                            // is set to true, but no attempt is made to fetch the address (see
+                            // fetchAddressButtonHandler()) . Instead, we start the intent service here if the
+                            // user has requested an address, since we now have a connection to GoogleApiClient.
+                            if (mAddressRequested) {
+                                startIntentService(mLastLocation);
+                            }
                         }
                     }
                 })
                 .addOnFailureListener(this, new OnFailureListener() {
                     @Override
                     public void onFailure(@NonNull Exception e) {
-                        Log.i(TAG, "No Last Location Detected!");
+                        Log.i(TAG, getString(R.string.no_location_detected));
                         Snackbar.make(poiView, R.string.no_location_detected, Snackbar.LENGTH_LONG).show();
                     }
                 });
@@ -188,10 +231,45 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
                             "\nLast Updated = " + mLastUpdateTime);
                     Log.i(TAG, message);
                     Snackbar.make(poiView, message, Snackbar.LENGTH_LONG).show();
+
+                    mAddressRequested = true;
+
+                    if (mAddressRequested) {
+                        startIntentService(mCurrentLocation);
+                    }
                 };
             };
         };
 
+
+        mRequestingLocationUpdates = false;
+        mLastUpdateTime = "";
+
+        // Set defaults, then update using values stored in the Bundle.
+        mResultReceiver = new AddressResultReceiver(new Handler());
+        mAddressRequested = false;
+        mAddressOutput = "";
+
+        updateValuesFromBundle(savedInstanceState);
+
+    }
+
+    /**
+     * Updates fields based on data stored in the bundle.
+     */
+    private void updateValuesFromBundle(Bundle savedInstanceState) {
+        if (savedInstanceState != null) {
+            // Check savedInstanceState to see if the address was previously requested.
+            if (savedInstanceState.keySet().contains(ADDRESS_REQUESTED_KEY)) {
+                mAddressRequested = savedInstanceState.getBoolean(ADDRESS_REQUESTED_KEY);
+            }
+            // Check savedInstanceState to see if the location address string was previously found
+            // and stored in the Bundle. If it was found, display the address string in the UI.
+            if (savedInstanceState.keySet().contains(LOCATION_ADDRESS_KEY)) {
+                mAddressOutput = savedInstanceState.getString(LOCATION_ADDRESS_KEY);
+                displayAddressOutput();
+            }
+        }
     }
 
     /**
@@ -241,7 +319,8 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
         }
         mFusedLocationClient.requestLocationUpdates(mLocationRequest,
                 mLocationCallback,
-                null /* Looper */);    }
+                null /* Looper */);
+    }
 
     /**
      * Removes location updates from the FusedLocationApi.
@@ -300,6 +379,75 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
         super.onDestroy();
     }
 
+    /**
+     * Creates an intent, adds location data to it as an extra, and starts the intent service for
+     * fetching an address.
+     */
+    protected void startIntentService(Location location) {
+        // Create an intent for passing to the intent service responsible for fetching the address.
+        Intent intent = new Intent(this, FetchAddressIntentService.class);
+
+        // Pass the result receiver as an extra to the service.
+        intent.putExtra(Constants.RECEIVER, (Parcelable) mResultReceiver);
+
+        // Pass the location data as an extra to the service.
+        intent.putExtra(Constants.LOCATION_DATA_EXTRA, location);
+
+        // Start the service. If the service isn't already running, it is instantiated and started
+        // (creating a process for it if needed); if it is running then it remains running. The
+        // service kills itself automatically once all intents are processed.
+        startService(intent);
+    }
+
+    /**
+     * Updates the address in the UI.
+     */
+    protected void displayAddressOutput() {
+        TextView tv = (TextView) findViewById(R.id.pointOfInterest);
+
+        String message = tv.getText().toString();
+
+        tv.setText(mPOIOutput+"\n" + "\nCurrent Address: "+mAddressOutput);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        // Save whether the address has been requested.
+        savedInstanceState.putBoolean(ADDRESS_REQUESTED_KEY, mAddressRequested);
+
+        // Save the address string.
+        savedInstanceState.putString(LOCATION_ADDRESS_KEY, mAddressOutput);
+        super.onSaveInstanceState(savedInstanceState);
+    }
+
+    /**
+     * Receiver for data sent from FetchAddressIntentService.
+     */
+    class AddressResultReceiver extends ResultReceiver {
+        public AddressResultReceiver(Handler handler) {
+            super(handler);
+        }
+
+        /**
+         *  Receives data sent from FetchAddressIntentService and updates the UI in MainActivity.
+         */
+        @Override
+        protected void onReceiveResult(int resultCode, Bundle resultData) {
+
+            // Display the address string or an error message sent from the intent service.
+            mAddressOutput = resultData.getString(Constants.RESULT_DATA_KEY);
+            displayAddressOutput();
+
+            // Show a toast message if an address was found.
+            if (resultCode == Constants.SUCCESS_RESULT) {
+                Toast.makeText(getApplicationContext(), getString(R.string.address_found), Toast.LENGTH_LONG).show();
+            }
+
+            // Reset. Enable the Fetch Address button and stop showing the progress bar.
+            mAddressRequested = false;
+        }
+    }
+
     public class MyOnItemSelectedListener implements OnItemSelectedListener {
 
         // This listener is responsible to deal with the user's selection from the spinner
@@ -340,6 +488,8 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
                     "%1$s\n Longitude: %2$s \n Latitude: %3$s",
                     pointOfInterest, longitude, latitude
             );
+
+            mPOIOutput = message;
 
             TextView tv = (TextView) findViewById(R.id.pointOfInterest);
 
