@@ -1,8 +1,12 @@
 package hk.ust.cse.comp4521.poialert;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Bundle;
-import android.support.design.widget.FloatingActionButton;
+import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
@@ -22,12 +26,18 @@ import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.SimpleCursorAdapter;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import hk.ust.cse.comp4521.poialert.provider.POIContract;
 
 import static hk.ust.cse.comp4521.poialert.provider.POIContract.POIEntry.*;
 
-public class POIAlertActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<Cursor>  {
+public class POIAlertActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<Cursor> {
 
     private String TAG = "POIAlertActivity";
 
@@ -40,21 +50,34 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
     private double longitude = 0.0;
     private long rowID = 0;
 
+    /**
+     * Provides the entry point to Google Play services.
+     */
+    protected FusedLocationProviderClient mFusedLocationClient;
+
+    /**
+     * Represents a geographical location.
+     */
+    protected Location mLastLocation;
+
+    // Request code to use when launching the resolution activity
+    private static final int REQUEST_RESOLVE_ERROR = 1001;
+    // Unique tag for the error dialog fragment
+    private static final String DIALOG_ERROR = "dialog_error";
+    // Bool to track whether the app is already resolving an error
+    private boolean mResolvingError = false;
+
+    TextView poiView;
+
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_poialert);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
-            }
-        });
+        poiView = (TextView) findViewById(R.id.pointOfInterest);
 
         // Create an empty adapter we will use to display the loaded data.
         // We display the Song Title and the Artist's name in the List
@@ -76,6 +99,48 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
 
         // set the on selected listener for the spinner
         poispinner.setOnItemSelectedListener(new MyOnItemSelectedListener());
+
+        // Build the Google API Fused Location Services client so that connections can be established
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+
+            Log.i(TAG, "No Permission Granted!");
+            return;
+        }
+
+        Log.i(TAG, "Location can be determined!");
+
+        mFusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                    @Override
+                    public void onSuccess(Location location) {
+                        // Got last known location. In some rare situations this can be null.
+                        if (location != null) {
+                            // Logic to handle location object
+                            mLastLocation = location;
+                            String message = "Last Location is: " +
+                                    "  Latitude = " + String.valueOf(mLastLocation.getLatitude()) +
+                                    "  Longitude = " + String.valueOf(mLastLocation.getLongitude());
+                            Log.i(TAG, message);
+                            Snackbar.make(poiView, message, Snackbar.LENGTH_LONG).show();
+                        }
+                    }
+                })
+                .addOnFailureListener(this, new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.i(TAG, "No Last Location Detected!");
+                        Snackbar.make(poiView, R.string.no_location_detected, Snackbar.LENGTH_LONG).show();
+                    }
+                });
 
     }
 
