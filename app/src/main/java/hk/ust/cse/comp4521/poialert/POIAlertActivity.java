@@ -165,6 +165,22 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
 
         poiView = (TextView) findViewById(R.id.pointOfInterest);
 
+
+        // Empty list for storing geofences.
+        mGeofenceList = new ArrayList<Geofence>();
+
+        // Initially set the PendingIntent used in addGeofences() and removeGeofences() to null.
+        mGeofencePendingIntent = null;
+
+        // Retrieve an instance of the SharedPreferences object.
+        mSharedPreferences = getSharedPreferences(Constants.SHARED_PREFERENCES_NAME,
+                MODE_PRIVATE);
+
+        // Get the value of mGeofencesAdded from SharedPreferences. Set to false as a default.
+        mGeofencesAdded = mSharedPreferences.getBoolean(Constants.GEOFENCES_ADDED_KEY, false);
+
+        mGeofencingClient = LocationServices.getGeofencingClient(this);
+
         // Create an empty adapter we will use to display the loaded data.
         // We display the Song Title and the Artist's name in the List
 
@@ -280,21 +296,6 @@ public class POIAlertActivity extends AppCompatActivity implements LoaderManager
         mResultReceiver = new AddressResultReceiver(new Handler());
         mAddressRequested = false;
         mAddressOutput = "";
-
-        // Empty list for storing geofences.
-        mGeofenceList = new ArrayList<Geofence>();
-
-        // Initially set the PendingIntent used in addGeofences() and removeGeofences() to null.
-        mGeofencePendingIntent = null;
-
-        // Retrieve an instance of the SharedPreferences object.
-        mSharedPreferences = getSharedPreferences(Constants.SHARED_PREFERENCES_NAME,
-                MODE_PRIVATE);
-
-        // Get the value of mGeofencesAdded from SharedPreferences. Set to false as a default.
-        mGeofencesAdded = mSharedPreferences.getBoolean(Constants.GEOFENCES_ADDED_KEY, false);
-
-        mGeofencingClient = LocationServices.getGeofencingClient(this);
 
         updateValuesFromBundle(savedInstanceState);
 
