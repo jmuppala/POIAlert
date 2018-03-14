@@ -11,6 +11,7 @@ import android.content.Context;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
+import android.support.v4.app.NotificationCompat;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -29,7 +30,7 @@ import java.util.List;
  */
 public class GeofenceTransitionsIntentService extends IntentService {
 
-    protected static final String TAG = "geofence-transitions-service";
+    protected static final String TAG = "geofence-transition";
 
     /**
      * This constructor is required, and calls the super IntentService(String)
@@ -136,7 +137,7 @@ public class GeofenceTransitionsIntentService extends IntentService {
                 stackBuilder.getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT);
 
         // Get a notification builder that's compatible with platform versions >= 4
-        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID);
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID);
 
         // Define the notification settings.
         builder.setSmallIcon(R.drawable.ic_menu_notifications)
