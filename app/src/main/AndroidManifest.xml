@@ -3,6 +3,8 @@
     package="hk.ust.cse.comp4521.poialert">
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
@@ -22,20 +24,8 @@
             </intent-filter>
         </activity>
 
-        <provider
-            android:name=".provider.POIDbProvider"
-            android:authorities="hk.ust.comp4521.poialert.provider"
-            android:enabled="true"
-            android:exported="true" />
-
         <activity android:name=".AddPOI" />
 
-        <service
-            android:name=".FetchAddressIntentService"
-            android:exported="false" />
-        <service
-            android:name=".GeofenceTransitionsIntentService"
-            android:exported="false"></service>
     </application>
 
 </manifest>

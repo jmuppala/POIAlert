@@ -13,12 +13,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 
-import hk.ust.cse.comp4521.poialert.provider.POIContract;
-
 import static android.provider.BaseColumns._ID;
-import static hk.ust.cse.comp4521.poialert.provider.POIContract.POIEntry.COLUMN_LATITUDE;
-import static hk.ust.cse.comp4521.poialert.provider.POIContract.POIEntry.COLUMN_LONGITUDE;
-import static hk.ust.cse.comp4521.poialert.provider.POIContract.POIEntry.COLUMN_POI;
 
 public class AddPOI extends AppCompatActivity implements View.OnClickListener {
 
@@ -92,44 +87,11 @@ public class AddPOI extends AppCompatActivity implements View.OnClickListener {
         Log.i(TAG, "POI " + pointOfInterest + " Latitude " + latitude + " Longitude " + longitude);
 
         if (add) {
-            ContentValues initialValues = new ContentValues();
-            initialValues.put(POIContract.POIEntry.COLUMN_POI, pointOfInterest);
-            initialValues.put(POIContract.POIEntry.COLUMN_LATITUDE, latitude);
-            initialValues.put(POIContract.POIEntry.COLUMN_LONGITUDE, longitude);
-
-            Uri baseUri = POIContract.POIProvider.CONTENT_URI;
-
-            Uri newUri = getContentResolver().insert(baseUri, initialValues);
-
-            Log.i(TAG, "Uri " + newUri.toString());
 
             finish();
 
         }
         else {
-            ContentValues initialValues = new ContentValues();
-            initialValues.put(POIContract.POIEntry.COLUMN_POI, pointOfInterest);
-            initialValues.put(POIContract.POIEntry.COLUMN_LATITUDE, latitude);
-            initialValues.put(POIContract.POIEntry.COLUMN_LONGITUDE, longitude);
-
-            // These is the projection on the POI content provider rows that we will retrieve.
-            final String[] POIDb_POI_PROJECTION = new String[] {
-                    _ID, // unique id to identify the row
-                    COLUMN_POI, // POI name
-                    COLUMN_LATITUDE, // latitude
-                    COLUMN_LONGITUDE, // longitude
-            };
-
-            int column_index;
-
-            Uri baseUri = ContentUris.withAppendedId(POIContract.POIProvider.CONTENT_URI, rowID);
-
-            String select = "((" + COLUMN_POI + " NOTNULL) AND ("
-                    + COLUMN_POI + " != '' ))";
-
-            int retval = getContentResolver().update(baseUri, initialValues, select, null);
-
-            Log.i(TAG, "Updated " + retval + " rows");
 
             finish();
 
