@@ -1,7 +1,6 @@
 package hk.ust.cse.comp4521.poialert;
 
 import android.content.Intent;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -10,18 +9,11 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-
-import com.google.gson.Gson;
-
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import hk.ust.cse.comp4521.poialert.rest.RestClient;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 
 public class AddPOI extends AppCompatActivity implements View.OnClickListener {
@@ -116,115 +108,36 @@ public class AddPOI extends AppCompatActivity implements View.OnClickListener {
 
         if (add) {
 
-            new ModifyPoiAsyncHttpTask().execute("");
+            // Ask the Rest Client to do POST /pois
+            RestClient.get().addPoi(poiInfo).enqueue(new Callback<ResponseBody>() {
 
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    Log.i(TAG, "Add Response is " + response.body().toString());
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.e(TAG, "Retrofit Error" + t.toString());
+                }
+            });
+            finish();
         }
         else {
 
-            new ModifyPoiAsyncHttpTask().execute(poiInfo._id);
+            // Ask the Rest Client to do PUT /pois/<id>
+            RestClient.get().updatePoi(poiInfo, poiInfo._id).enqueue(new Callback<ResponseBody>() {
 
-        }
-    }
-
-    private class ModifyPoiAsyncHttpTask extends AsyncTask<String, Void, Integer> {
-        private String response = null;
-
-        @Override
-        protected Integer doInBackground(String... params) {
-            InputStream inputStream = null;
-            HttpURLConnection urlConnection = null;
-            Integer result = 0;
-            URL url;
-            try {
-                /* forming th java.net.URL object */
-                /* for Post request */
-                if (add) { // if adding we do POST /places
-                    url = new URL(Constants.SERVER_URL);
-                }
-                else { // if updating we do PUT /places/<id>
-                    url = new URL(Constants.SERVER_URL+"/"+params[0]);
-                }
-                urlConnection = (HttpURLConnection) url.openConnection();
-
-                 /* optional request header */
-                urlConnection.setRequestProperty("Content-Type", "application/json");
-
-                /* optional request header */
-                urlConnection.setRequestProperty("Accept", "application/json");
-
-                if (add) {
-                    urlConnection.setRequestMethod("POST");
-                } else {
-                    urlConnection.setRequestMethod("PUT");
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    Log.i(TAG, "Update Response is " + response.body().toString());
                 }
 
-                // request has a body to be added
-                urlConnection.setDoOutput(true);
-                OutputStream out = new BufferedOutputStream(urlConnection.getOutputStream());
-                writeStream(out);
-
-                // urlConnection.connect();
-                int statusCode = urlConnection.getResponseCode();
-                Log.i(TAG, "statusCode is "+statusCode);
-
-                /* 200 represents HTTP OK */
-                if (statusCode == 200) {
-                    inputStream = new BufferedInputStream(urlConnection.getInputStream());
-                    response = convertInputStreamToString(inputStream);
-                    result = 1;
-                } else {
-                    inputStream = new BufferedInputStream(urlConnection.getInputStream());
-                    response = convertInputStreamToString(inputStream);
-                    result = 0; //"Failed to add/update data!";
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.e(TAG, "Retrofit Error" + t.toString());
                 }
-            } catch (Exception e) {
-                Log.d(TAG, e.getLocalizedMessage());
-            }
-            return result; //"Failed to fetch data!";
-        }
-
-        private void writeStream(OutputStream out) {
-
-            Gson gson = new Gson();
-
-            // converts the java object to json string
-            String placeJsonInfo = gson.toJson(poiInfo);
-
-            Log.i(TAG, "Place Info Object is "+placeJsonInfo);
-
-            try {
-                out.write(placeJsonInfo.getBytes());
-                out.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-        }
-
-        private String convertInputStreamToString(InputStream inputStream) throws IOException {
-            BufferedReader bufferedReader = new BufferedReader( new InputStreamReader(inputStream));
-            String line = "";
-            String result = "";
-            while((line = bufferedReader.readLine()) != null){
-                result += line;
-            }
-
-            /* Close Stream */
-            if(null!=inputStream){
-                inputStream.close();
-            }
-            return result;
-        }
-
-        @Override
-        protected void onPostExecute(Integer result) {
-            /* Download complete. Lets update UI */
-            if(result == 1){
-                Log.i(TAG, "Response is "+response);
-            }else{
-                Log.i(TAG, "Response is "+response);
-                Log.e(TAG, "Failed to set data!");
-            }
+            });
             finish();
         }
     }

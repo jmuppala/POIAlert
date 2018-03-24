@@ -31,6 +31,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import hk.ust.cse.comp4521.poialert.rest.RestClient;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
 public class POIAlertActivity extends AppCompatActivity{
 
     private String TAG = "POIAlertActivity";
@@ -83,8 +89,39 @@ public class POIAlertActivity extends AppCompatActivity{
         poispinner.setAdapter(mAdapter);
         poispinner.setOnItemSelectedListener(new MyOnItemSelectedListener());
 
-        // fetch all the POIs from the server. Use GET /places
-        new POIsAsyncHttpTask().execute();
+        getAllPOIs();
+
+    }
+
+    protected void getAllPOIs() {
+
+        // use the RestClient to do GET /pois and return list of POIs
+        // When data is fetched the callback function is called.
+        RestClient.get().getPois().enqueue(new Callback<ArrayList<PoiInfo>>() {
+            @Override
+            public void onResponse(Call<ArrayList<PoiInfo>> call, Response<ArrayList<PoiInfo>> response) {
+                // The return value is an array list which is assigned to the array list of POIs
+                poiInfoArrayList = response.body();
+
+                if (poiInfoArrayList.size() > 0) {
+
+                    String[] allPOINames = new String[poiInfoArrayList.size()];
+                    for (int i = 0; i < poiInfoArrayList.size(); i++) {
+                        allPOINames[i] = poiInfoArrayList.get(i).poiName;
+                    }
+                    mAdapter = new ArrayAdapter(POIAlertActivity.this, android.R.layout.simple_spinner_dropdown_item, allPOINames);
+                    poispinner.setAdapter(mAdapter);
+                } else {
+                    Log.w(TAG, "Failed to fetch data!");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<ArrayList<PoiInfo>> call, Throwable t) {
+                Log.e(TAG, "Retrofit Error" + t.toString());
+            }
+
+        });
     }
 
     @Override
@@ -134,8 +171,37 @@ public class POIAlertActivity extends AppCompatActivity{
             // remember the poi selected
             selectedPOIindex = (int) id;
 
-            // fetch the detailed info about the selected POI. Use GET /places/<id>
-            new SelectedPoiAsyncHttpTask().execute(poiInfoArrayList.get((int) id).id, "Get");
+            // We are calling the REST client to do GET /pois/<id>
+            RestClient.get().getPoi(poiInfoArrayList.get((int) id).id).enqueue(new Callback<PoiInfo>() {
+                @Override
+                public void onResponse(Call<PoiInfo> call, Response<PoiInfo> response) {
+
+                    PoiInfo poiInfo = response.body();
+                    // call back returns an poiInfo object.
+                    if (poiInfo != null) {
+                        // save the information to the specific object for that POI
+                        poiInfoArrayList.get(selectedPOIindex).latitude = poiInfo.latitude;
+                        poiInfoArrayList.get(selectedPOIindex).longitude = poiInfo.longitude;
+                    }
+
+                    String message = String.format(
+                            "%1$s\n Longitude: %2$s \n Latitude: %3$s",
+                            poiInfoArrayList.get((int) selectedPOIindex).poiName,
+                            poiInfoArrayList.get((int) selectedPOIindex).longitude,
+                            poiInfoArrayList.get((int) selectedPOIindex).latitude
+                    );
+
+                    TextView tv = (TextView) findViewById(R.id.pointOfInterest);
+
+                    // Updates the textview on the main screen to show the selected pointOfInterest
+                    tv.setText(message);
+                }
+
+                @Override
+                public void onFailure(Call<PoiInfo> call, Throwable t) {
+                    Log.e(TAG, "Retrofit Error" + t.toString());
+                }
+            });
 
         }
 
@@ -168,9 +234,7 @@ public class POIAlertActivity extends AppCompatActivity{
                 // add a new POI. So indicate to addPOI.
                 intent.putExtra("Add",true);
                 startActivity(intent);
-
-                // fetch all the POIs from the server. Use GET /places
-                new POIsAsyncHttpTask().execute();
+                getAllPOIs();
                 break;
             case R.id.action_update_poi:
 
@@ -182,17 +246,24 @@ public class POIAlertActivity extends AppCompatActivity{
                 intent.putExtra("Latitude", poiInfoArrayList.get((int) selectedPOIindex).latitude);
                 intent.putExtra("Longitude", poiInfoArrayList.get((int) selectedPOIindex).longitude);
                 startActivity(intent);
-
-                // fetch all the POIs from the server. Use GET /places
-                new POIsAsyncHttpTask().execute();
+                getAllPOIs();
                 break;
 
             case R.id.action_delete_poi:
                 // delete the selected POI
-                new SelectedPoiAsyncHttpTask().execute(poiInfoArrayList.get((int) selectedPOIindex).id, "Delete");
+                // Call the Rest Client to execute DELETE /pois/<id>
+                RestClient.get().deletePoi(poiInfoArrayList.get((int) selectedPOIindex).id).enqueue(new Callback<ResponseBody>() {
+                    @Override
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        Log.i(TAG, "Response " + response.body().toString());
+                    }
 
-                // fetch all the POIs from the server. Use GET /places
-                new POIsAsyncHttpTask().execute();
+                    @Override
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        Log.e(TAG, "Retrofit Error" + t.toString());
+                    }
+                });
+                getAllPOIs();
                 break;
             case R.id.action_settings:
                 return true;
@@ -201,176 +272,6 @@ public class POIAlertActivity extends AppCompatActivity{
         }
 
         return super.onOptionsItemSelected(item);
-    }
-
-    // fetches all the POIs from server. Uses GET /places
-    public class POIsAsyncHttpTask extends AsyncTask<String, Void, Integer> {
-
-        @Override
-        protected Integer doInBackground(String... params) {
-            InputStream inputStream = null;
-            HttpURLConnection urlConnection = null;
-            Integer result = 0;
-            try {
-                /* forming th java.net.URL object */
-                URL url = new URL(Constants.SERVER_URL);
-                urlConnection = (HttpURLConnection) url.openConnection();
-
-                 /* optional request header. Asking for info in json format */
-                urlConnection.setRequestProperty("Content-Type", "application/json");
-
-                /* optional request header */
-                urlConnection.setRequestProperty("Accept", "application/json");
-
-                /* for Get request */
-                urlConnection.setRequestMethod("GET");
-                int statusCode = urlConnection.getResponseCode();
-                Log.i(TAG, "statusCode is "+statusCode);
-
-                /* 200 represents HTTP OK */
-                if (statusCode == 200) {
-                    inputStream = new BufferedInputStream(urlConnection.getInputStream());
-                    String response = convertInputStreamToString(inputStream);
-                    parseResult(response);
-                    result = 1; // Successful
-                    return result;
-                } else {
-                    result = 0; //"Failed to fetch data!";
-                }
-            } catch (Exception e) {
-                Log.d(TAG, e.getLocalizedMessage());
-            }
-            return result; //"Failed to fetch data!";
-        }
-
-        @Override
-        protected void onPostExecute(Integer result) {
-            /* Download complete. Lets update UI */
-            if(result == 1){
-
-                String [] allPOINames = new String[poiInfoArrayList.size()];
-                for (int i = 0; i < poiInfoArrayList.size(); i++) {
-                    allPOINames[i] = poiInfoArrayList.get(i).poiName;
-                }
-                mAdapter = new ArrayAdapter(POIAlertActivity.this, android.R.layout.simple_spinner_dropdown_item, allPOINames);
-                poispinner.setAdapter(mAdapter);
-            }else{
-                Log.e(TAG, "Failed to fetch data!");
-            }
-        }
-    }
-
-    private String convertInputStreamToString(InputStream inputStream) throws IOException {
-        BufferedReader bufferedReader = new BufferedReader( new InputStreamReader(inputStream));
-        String line = "";
-        String result = "";
-        while((line = bufferedReader.readLine()) != null){
-            result += line;
-        }
-
-            /* Close Stream */
-        if(null!=inputStream){
-            inputStream.close();
-        }
-        return result;
-    }
-
-    private void parseResult(String result) {
-
-        poiInfoArrayList = new ArrayList<PoiInfo>();
-
-        Log.i(TAG, "Result from server is " + result);
-
-        // We are using the GSON library for converting JSON
-        GsonBuilder gsonBuilder = new GsonBuilder();
-        Gson gson = gsonBuilder.create();
-
-        // converts the incoming JSON string to an array list of PoiInfo objects
-        poiInfoArrayList = Arrays.asList(gson.fromJson(result, PoiInfo[].class));
-
-    }
-
-    // Used for fetching a selected POI info using GET or deleting the selected POI using DELETE
-    // the Parameter for AsyncTask indicates which action to perform
-    private class SelectedPoiAsyncHttpTask extends AsyncTask<String, Void, Integer> {
-
-        private String response = null;
-
-        private boolean deletePlace = false;
-
-        @Override
-        protected Integer doInBackground(String... params) {
-            InputStream inputStream = null;
-            HttpURLConnection urlConnection = null;
-            Integer result = 0;
-            try {
-                /* forming th java.net.URL object */
-                // Append the ID of the selected POI to URL to get /places/<id>
-                URL url = new URL(Constants.SERVER_URL+"/"+params[0]);
-                urlConnection = (HttpURLConnection) url.openConnection();
-
-                 /* optional request header */
-                urlConnection.setRequestProperty("Content-Type", "application/json");
-
-                /* optional request header */
-                urlConnection.setRequestProperty("Accept", "application/json");
-
-                /* for Delete or Get request */
-                deletePlace = "Delete".equals(params[1]);
-                if (deletePlace)
-                    urlConnection.setRequestMethod("DELETE");
-                else
-                    urlConnection.setRequestMethod("GET");
-
-                int statusCode = urlConnection.getResponseCode();
-                Log.i(TAG, "statusCode is "+statusCode);
-
-                /* 200 represents HTTP OK */
-                if (statusCode == 200) {
-                    inputStream = new BufferedInputStream(urlConnection.getInputStream());
-                    response = convertInputStreamToString(inputStream);
-                    result = 1;
-                } else {
-                    result = 0; //"Failed to fetch data!";
-                }
-            } catch (Exception e) {
-                Log.d(TAG, e.getLocalizedMessage());
-            }
-            return result; //"Failed to fetch data!";
-        }
-
-        @Override
-        protected void onPostExecute(Integer result) {
-            /* Download complete. Lets update UI */
-            if(result == 1 && response != null && !deletePlace){
-
-                GsonBuilder gsonBuilder = new GsonBuilder();
-                Gson gson = gsonBuilder.create();
-
-                PoiInfo poiInfo;
-                poiInfo = gson.fromJson(response, PoiInfo.class);
-
-                if (poiInfo != null) {
-                    poiInfoArrayList.get(selectedPOIindex).latitude = poiInfo.latitude;
-                    poiInfoArrayList.get(selectedPOIindex).longitude = poiInfo.longitude;
-                }
-
-                String message = String.format(
-                        "%1$s\n Longitude: %2$s \n Latitude: %3$s",
-                        poiInfoArrayList.get(selectedPOIindex).poiName,
-                        poiInfoArrayList.get((int) selectedPOIindex).longitude,
-                        poiInfoArrayList.get((int) selectedPOIindex).latitude
-                );
-
-                TextView tv = (TextView) findViewById(R.id.pointOfInterest);
-
-                // Updates the textview on the main screen to show the selected pointOfInterest
-                tv.setText(message);
-
-            }else{
-                Log.e(TAG, "Failed to fetch data!");
-            }
-        }
     }
 
 }
